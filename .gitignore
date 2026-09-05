@@ -1,0 +1,17 @@
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+
+# PyCharm / IDE Settings
+.idea/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+
+# Project Artifacts / Generated Files
+report.md
+*.log
