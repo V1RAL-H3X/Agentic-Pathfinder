@@ -71,10 +71,12 @@ Agentic-Pathfinder/
        python -m src.main -s WORKSTATION01.CORP.LOCAL -t DC01.CORP.LOCAL --edr "CrowdStrike Falcon" --mock 
    ```
 2. Generate Markdown Assessment Report
-    ```python -m src.main -s WORKSTATION01.CORP.LOCAL -t DC01.CORP.LOCAL --edr "Defender for Endpoint" --mock --markdown -o report.md
+    ```bash
+   python -m src.main -s WORKSTATION01.CORP.LOCAL -t DC01.CORP.LOCAL --edr "Defender for Endpoint" --mock --markdown -o report.md
     ```
 3. Export Plan as Raw JSON
-    ```python -m src.main -s WORKSTATION01.CORP.LOCAL -t DC01.CORP.LOCAL --command "ipconfig /all" --mock --json
+    ```bash
+   python -m src.main -s WORKSTATION01.CORP.LOCAL -t DC01.CORP.LOCAL --command "ipconfig /all" --mock --json
     ```
 ---
 
