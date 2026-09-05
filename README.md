@@ -20,7 +20,7 @@ By combining **Neo4j** (BloodHound graph topographies) with a decoupled multi-ag
 ---
 
 ## Project Architecture
-
+```
 Agentic-Pathfinder/
 ├── src/
 │   ├── agents/
@@ -38,7 +38,7 @@ Agentic-Pathfinder/
 ├── tests/                          # Unit and integration test suite
 ├── requirements.txt
 └── README.md
-
+```
 ---
 
 ## Prerequisites
