@@ -17,3 +17,9 @@ __pycache__/
 # Project Artifacts / Generated Files
 report.md
 *.log
+
+#Test Directories
+tests/
+test/
+**/tests/
+Test/
