@@ -4,6 +4,8 @@ venv/
 ENV/
 __pycache__/
 *.py[cod]
+.env
+*.env
 
 # PyCharm / IDE Settings
 .idea/

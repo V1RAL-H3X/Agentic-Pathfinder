@@ -1,0 +1,23 @@
+{
+    "data": [
+        {
+            "kind": "User",
+            "Properties": {
+                "name": "JOHN.DOE@CORP.LOCAL"
+            },
+            "Members": []
+        },
+        {
+            "kind": "Group",
+            "Properties": {
+                "name": "IT_SUPPORT@CORP.LOCAL"
+            },
+            "Members": [
+                {
+                    "MemberName": "JOHN.DOE@CORP.LOCAL",
+                    "MemberType": "User"
+                }
+            ]
+        }
+    ]
+}

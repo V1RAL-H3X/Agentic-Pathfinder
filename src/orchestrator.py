@@ -1,107 +1,142 @@
+import os
 from typing import Dict, List, Optional, Any
-from src.models.plan_step import PlanStep
-from src.agents.graph_analyst import GraphAnalyst
-from src.agents.opsec_assessor import OpSecAssessor
-from src.agents.command_synthesizer import CommandSynthesizer
+from crewai import Crew, Task, LLM
+
+# Import all modular agent factory functions
+from src.crew.agents.graph_recon import create_graph_recon_agent
+from src.crew.agents.infrastructure_scanning import create_infrastructure_scanning_agent
+from src.crew.agents.attack_mapping import create_attack_mapping_agent
+from src.crew.agents.mobile_assessment import create_mobile_assessment_agent
+from src.crew.agents.llm_safety_testing import create_llm_safety_testing_agent
+from src.crew.agents.exploit_execution import create_exploit_execution_agent
 
 
 class PathfinderOrchestrator:
     """
-    Main pipeline orchestrator for Agentic-Pathfinder.
-
-    Coordinates the sub-agents (GraphAnalyst, OpSecAssessor, CommandSynthesizer)
-    to query Neo4j attack paths, parse raw graph relationships into structured PlanSteps,
-    evaluate OpSec risk against target host security controls, and synthesize execution commands.
+    Main pipeline orchestrator for Agentic-Pathfinder using CrewAI and Ollama.
+    Executes specific security agents strictly on user-defined opt-in parameters.
     """
 
-    # Mapping BloodHound relationship types to tactical lateral movement techniques
-    RELATIONSHIP_TECHNIQUE_MAP: Dict[str, str] = {
-        "AdminTo": "Pass-the-Hash",
-        "CanPSRemote": "WinRM",
-        "ExecuteDCOM": "DCOM",
-        "CanRDP": "RDP",
-        "HasSession": "PsExec"
-    }
+    def __init__(self, model_name: str = "ollama/llama3.1", base_url: str = "http://localhost:11434"):
+        # Force LiteLLM to treat local ollama correctly via environment variables
+        os.environ["OPENAI_API_KEY"] = "not-needed"
+        os.environ["OPENAI_API_BASE"] = base_url
 
-    def __init__(
+        # Ensure model is formatted for LiteLLM
+        if not model_name.startswith("ollama/"):
+            model_name = f"ollama/{model_name}"
+
+        self.local_llm = LLM(
+            model=model_name,
+            base_url=base_url,
+            api_key="not-needed"
+        )
+
+    def run_assessment(
             self,
-            graph_analyst: Optional[GraphAnalyst] = None,
-            opsec_assessor: Optional[OpSecAssessor] = None,
-            command_synthesizer: Optional[CommandSynthesizer] = None
-    ):
-        self.graph_analyst = graph_analyst or GraphAnalyst()
-        self.opsec_assessor = opsec_assessor or OpSecAssessor()
-        self.command_synthesizer = command_synthesizer or CommandSynthesizer()
-
-    def parse_graph_edges_to_plan(self, graph_edges: List[Dict[str, Any]]) -> List[PlanStep]:
-        """
-        Converts raw Neo4j graph edge outputs into un-evaluated PlanStep objects.
-        """
-        steps: List[PlanStep] = []
-        for index, edge in enumerate(graph_edges, start=1):
-            rel_type = edge.get("relationship_type", "AdminTo")
-            technique = self.RELATIONSHIP_TECHNIQUE_MAP.get(rel_type, "WMI")
-            source_host = edge.get("source_name", "UNKNOWN_SOURCE")
-            target_host = edge.get("target_name", "UNKNOWN_TARGET")
-
-            step = PlanStep(
-                step_id=index,
-                source_host=source_host,
-                target_host=target_host,
-                technique_name=technique,
-                opsec_risk_score=5,  # Default baseline prior to OpSec assessment
-                reason_for_risk="Pending OpSec evaluation",
-                execution_command_template=""
-            )
-            steps.append(step)
-
-        return steps
-
-    def generate_lateral_movement_plan(
-            self,
-            source_host: str,
+            source_host: Optional[str] = None,
             target_host: Optional[str] = None,
-            host_controls_map: Optional[Dict[str, List[str]]] = None,
-            command_payload: str = "whoami",
-            username: str = "Administrator",
-            domain: str = "CORP.LOCAL"
-    ) -> List[PlanStep]:
+            run_graph_recon: bool = False,
+            run_infrastructure_scan: bool = False,
+            run_attack_mapping: bool = False,
+            mobile_binary_path: Optional[str] = None,
+            llm_endpoint: Optional[str] = None,
+            exploit_target: Optional[str] = None,
+            exploit_module: Optional[str] = None,
+            dry_run_exploit: bool = True
+    ) -> Any:
         """
-        Executes the full end-to-end pathfinding pipeline:
-        1. Queries Neo4j for outbound edges or pathing.
-        2. Converts graph relationships into structured PlanSteps.
-        3. Evaluates OpSec risk scores based on target security controls.
-        4. Synthesizes executable command syntaxes for each step.
+        Dynamically builds and runs a CrewAI crew using only the modules
+        explicitly requested by the user.
         """
-        host_controls_map = host_controls_map or {}
+        agents_list = []
+        tasks_list = []
 
-        # Step 1: Query Neo4j via GraphAnalyst
-        if target_host:
-            raw_edges = self.graph_analyst.find_shortest_path(source_host, target_host)
-        else:
-            raw_edges = self.graph_analyst.get_outbound_execution_paths(source_host)
-
-        # Step 2: Parse raw graph edges into PlanStep objects
-        steps = self.parse_graph_edges_to_plan(raw_edges)
-
-        # Step 3 & 4: Evaluate OpSec risk and synthesize execution commands
-        final_plan: List[PlanStep] = []
-        for step in steps:
-            target_controls = host_controls_map.get(step.target_host, [])
-
-            # OpSec evaluation
-            evaluated_step = self.opsec_assessor.evaluate_step(
-                step, target_security_controls=target_controls
+        # 1. Active Directory Graph Recon (BloodHound / Neo4j)
+        if run_graph_recon and source_host:
+            graph_agent = create_graph_recon_agent(self.local_llm)
+            agents_list.append(graph_agent)
+            tasks_list.append(
+                Task(
+                    description=f"Interrogate BloodHound graph paths originating from {source_host} targeting {target_host or 'Domain Controllers'}.",
+                    expected_output="Structured JSON list of graph edges, relationship types, and movement paths.",
+                    agent=graph_agent
+                )
             )
 
-            # Command synthesis
-            populated_step = self.command_synthesizer.populate_step_command(
-                evaluated_step,
-                command=command_payload,
-                username=username,
-                domain=domain
+        # 2. Infrastructure Vulnerability Scanning (OpenVAS)
+        if run_infrastructure_scan and (source_host or target_host):
+            target = target_host or source_host
+            infra_agent = create_infrastructure_scanning_agent(self.local_llm)
+            agents_list.append(infra_agent)
+            tasks_list.append(
+                Task(
+                    description=f"Execute vulnerability assessment scans against target asset {target}.",
+                    expected_output="Prioritized list of unpatched CVEs and service misconfigurations.",
+                    agent=infra_agent
+                )
             )
 
-            final_plan.append(populated_step)
+        # 3. Threat Intelligence & Attack Mapping (MITRE ATT&CK)
+        if run_attack_mapping:
+            attack_map_agent = create_attack_mapping_agent(self.local_llm)
+            agents_list.append(attack_map_agent)
+            tasks_list.append(
+                Task(
+                    description="Analyze previous scan results or target behaviors and map them to MITRE ATT&CK tactical techniques.",
+                    expected_output="Tactical threat mapping report with precise TTP identifiers.",
+                    agent=attack_map_agent
+                )
+            )
 
-        return final_plan
+        # 4. Mobile Application Assessment (MobSF)
+        if mobile_binary_path:
+            mobile_agent = create_mobile_assessment_agent(self.local_llm)
+            agents_list.append(mobile_agent)
+            tasks_list.append(
+                Task(
+                    description=f"Perform static binary analysis on mobile application package at {mobile_binary_path}.",
+                    expected_output="Mobile security summary detailing hardcoded secrets, weak crypto, and API weaknesses.",
+                    agent=mobile_agent
+                )
+            )
+
+        # 5. AI Endpoint Safety Testing (Garak)
+        if llm_endpoint:
+            llm_safety_agent = create_llm_safety_testing_agent(self.local_llm)
+            agents_list.append(llm_safety_agent)
+            tasks_list.append(
+                Task(
+                    description=f"Execute Garak vulnerability scan suites against target AI model endpoint at {llm_endpoint}.",
+                    expected_output="AI red-teaming report identifying prompt injection, data leakage, or safety bypass vectors.",
+                    agent=llm_safety_agent
+                )
+            )
+
+        # 6. Exploit Execution & Verification (Metasploit)
+        if exploit_target and exploit_module:
+            exploit_agent = create_exploit_execution_agent(self.local_llm)
+            agents_list.append(exploit_agent)
+
+            mode_str = "DRY RUN" if dry_run_exploit else "LIVE EXECUTION"
+            tasks_list.append(
+                Task(
+                    description=f"Verify target path against {exploit_target} using Metasploit module '{exploit_module}' under {mode_str} policy.",
+                    expected_output="Execution status log and validation report confirming control accessibility.",
+                    agent=exploit_agent
+                )
+            )
+
+        # Ensure at least one agent and task are selected before kicking off
+        if not agents_list:
+            raise ValueError(
+                "No agents were selected for execution. Please enable at least one module flag or target parameter.")
+
+        # Assemble and kickoff the custom-scoped Crew
+        scoped_crew = Crew(
+            agents=agents_list,
+            tasks=tasks_list,
+            verbose=True
+        )
+
+        return scoped_crew.kickoff()
