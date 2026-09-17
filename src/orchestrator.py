@@ -81,11 +81,15 @@ class PathfinderOrchestrator:
         if run_attack_mapping:
             attack_map_agent = create_attack_mapping_agent(self.local_llm)
             agents_list.append(attack_map_agent)
+
+            previous_context = [tasks_list[-1]] if tasks_list else []
+
             tasks_list.append(
                 Task(
                     description="Analyze previous scan results or target behaviors and map them to MITRE ATT&CK tactical techniques.",
                     expected_output="Tactical threat mapping report with precise TTP identifiers.",
-                    agent=attack_map_agent
+                    agent=attack_map_agent,
+                    context=previous_context
                 )
             )
 

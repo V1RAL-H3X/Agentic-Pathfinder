@@ -1,37 +1,46 @@
-# src/crew/agents/attack_mapping.py
-from crewai import Agent
+import os
+from crewai import Agent, Task
 from crewai.tools import tool
 
+class MitreMapperTool:
+    @tool("Map Vulnerabilities to MITRE ATT&CK Techniques")
+    def map_to_mitre(findings_summary: str, mock: bool = True) -> str:
+        """
+        Analyzes security findings or vulnerabilities and maps them to corresponding
+        MITRE ATT&CK tactics, techniques, and IDs. Set mock=True for offline testing.
+        """
+        if mock or os.getenv("PATHFINDER_MOCK_MODE", "true").lower() == "true":
+            return (
+                "[MOCK MITRE MAPPING REPORT]\n"
+                "1. Finding: PrintNightmare (CVE-2021-34527)\n"
+                "   - Tactic: Privilege Escalation / Execution\n"
+                "   - Technique: Exploitation for Client Execution (T1203) / Remote Services (T1021)\n"
+                "2. Finding: SMBv1 Enabled\n"
+                "   - Tactic: Lateral Movement\n"
+                "   - Technique: Lateral Tool Transfer (T1570) / SMB/Windows Admin Shares (T1021.002)\n"
+                "3. Finding: Insecure SSL/TLS Configuration\n"
+                "   - Tactic: Discovery / Credential Access\n"
+                "   - Technique: Network Service Discovery (T1046)"
+            )
 
-@tool("Query MITRE ATT&CK Reference Mapping")
-def lookup_attack_technique(technique_id: str) -> str:
-    """Looks up description, mitigation, and detection strategies for a specific MITRE ATT&CK ID (e.g., T1078, T1021)."""
-    # A lightweight offline lookup dictionary or API wrapper
-    attack_database = {
-        "T1021": {"name": "Remote Services", "tactic": "Lateral Movement",
-                  "description": "Adversaries may use valid accounts to log into remote services like RDP, SSH, or WinRM."},
-        "T1078": {"name": "Valid Accounts", "tactic": "Defense Evasion / Persistence",
-                  "description": "Adversaries may steal and use credentials of existing accounts to gain access."},
-        "T1484": {"name": "Domain Policy Modification", "tactic": "Privilege Escalation",
-                  "description": "Adversaries may modify domain-wide policies to gain control over systems."}
-    }
+        try:
+            # TODO: Live MITRE ATT&CK API or local STIX/TAXII database query placeholder
+            pass
+        except Exception as e:
+            return f"[ERROR] Failed to execute MITRE ATT&CK mapping: {str(e)}"
 
-    tech = attack_database.get(technique_id.upper())
-    if tech:
-        return f"Technique: {tech['name']} ({technique_id})\nTactic: {tech['tactic']}\nDetails: {tech['description']}"
-    return f"Technique ID '{technique_id}' not found in local tactical cache."
+def create_attack_mapping_agent(llm) -> Agent:
+    mapper_tool = MitreMapperTool.map_to_mitre
 
-
-def create_attack_mapping_agent(llm):
     return Agent(
-        role="MITRE ATT&CK Framework Strategist",
-        goal="Analyze raw scan outputs, graph paths, and vulnerabilities to map adversary behaviors to precise MITRE ATT&CK tactics, techniques, and procedures (TTPs).",
+        role="Threat Intelligence & Attack Mapper",
+        goal="Bridge raw vulnerability reports and graph telemetry into structured MITRE ATT&CK tactical matrices.",
         backstory=(
-            "You are a threat intelligence analyst expert in the MITRE ATT&CK framework. "
-            "You take technical indicators of compromise and structural access vectors, categorizing "
-            "them accurately to measure defensive detection telemetry coverage and adversary modeling."
+            "An elite threat intelligence analyst specializing in adversary emulation, "
+            "framework mapping, and translating technical exposures into recognized TTPs."
         ),
-        tools=[lookup_attack_technique],
+        tools=[mapper_tool],
         llm=llm,
-        verbose=True
+        verbose=True,
+        memory=True
     )
